@@ -90,7 +90,11 @@ $(BUILD_DIR)/$(APP_NAME).elf: $(OBJS)
 # Conversão para eboot.bin com Fake PAID
 $(STAGE_DIR)/eboot.bin: $(BUILD_DIR)/$(APP_NAME).elf
 	@mkdir -p $(STAGE_DIR)
-	@echo " [EBOOT] Gerando $(STAGE_DIR)/eboot.bin..."
+	@if [ -z "$(CREATE_FSELF)" ]; then \
+		echo " [ERRO] create-fself não foi localizado em $(TOOLCHAIN)/bin/$(CDIR)/"; \
+		exit 1; \
+	fi
+	@echo " [EBOOT] Gerando $(STAGE_DIR)/eboot.bin com $(CREATE_FSELF)..."
 	$(CREATE_FSELF) -in=$< -out=$(BUILD_DIR)/$(APP_NAME).oelf --eboot="$@" --paid 0x3800000000000011
 
 # Montagem de Staging

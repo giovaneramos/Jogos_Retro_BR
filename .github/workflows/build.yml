@@ -71,16 +71,31 @@ jobs:
         run: |
           echo "==> Iniciando compilação (make stage)..."
           echo "OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN"
-          make stage
+          if ! make stage 2>&1 | tee /tmp/make_stage.log; then
+            echo "::error title=Falha no make stage::$(tail -n 5 /tmp/make_stage.log | tr '\n' ' ' | tr -d '\"')"
+            echo "### ❌ Log de Erro no make stage:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat /tmp/make_stage.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Construir Pacote .PKG
         run: |
           echo "==> Empacotando .pkg com PkgTool.Core..."
-          make pkg
+          if ! make pkg 2>&1 | tee /tmp/make_pkg.log; then
+            echo "::error title=Falha no make pkg::$(tail -n 5 /tmp/make_pkg.log | tr '\n' ' ' | tr -d '\"')"
+            echo "### ❌ Log de Erro no make pkg:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat /tmp/make_pkg.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
           echo "==> Arquivos gerados em dist/:"
           ls -lh dist/
 
       - name: Publicar Arquivo .PKG e Artefatos
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: RetroPlayer_PS4_PS5_PKG
@@ -90,6 +105,13 @@ jobs:
             sce_sys/param.sfo
             sce_sys/icon0.png
             sce_sys/pic1.png
+
+      - name: Publicar Logs de Diagnóstico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build_Logs
+          path: /tmp/*.log
 
       - name: Resumo do Build
         if: always()
