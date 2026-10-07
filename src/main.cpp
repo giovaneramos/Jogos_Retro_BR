@@ -1,7 +1,6 @@
-#include <iostream>
+#include <cstdio>
 #include <string>
 #include <vector>
-#include <chrono>
 
 #if defined(__has_include)
   #if __has_include(<SDL2/SDL.h>)
@@ -91,10 +90,10 @@ int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
 
-    std::cout << "[RetroPlayer] Inicializando subsistemas SDL2..." << std::endl;
+    printf("[RetroPlayer] Inicializando subsistemas SDL2...\n");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) != 0) {
-        std::cerr << "[ERRO] Falha ao inicializar SDL2: " << SDL_GetError() << std::endl;
+        fprintf(stderr, "[ERRO] Falha ao inicializar SDL2: %s\n", SDL_GetError());
         return 1;
     }
 
@@ -107,7 +106,7 @@ int main(int argc, char* argv[]) {
             if (controller) {
                 const char* name = SDL_GameControllerName(controller);
                 controller_name = name ? name : "Controle DualShock / DualSense";
-                std::cout << "[RetroPlayer] Controle detectado: " << controller_name << std::endl;
+                printf("[RetroPlayer] Controle detectado: %s\n", controller_name.c_str());
                 break;
             }
         }
@@ -124,7 +123,7 @@ int main(int argc, char* argv[]) {
     );
 
     if (!window) {
-        std::cerr << "[ERRO] Falha ao criar janela SDL: " << SDL_GetError() << std::endl;
+        fprintf(stderr, "[ERRO] Falha ao criar janela SDL: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
     }
@@ -137,7 +136,7 @@ int main(int argc, char* argv[]) {
     );
 
     if (!renderer) {
-        std::cerr << "[ERRO] Falha ao criar renderer: " << SDL_GetError() << std::endl;
+        fprintf(stderr, "[ERRO] Falha ao criar renderer: %s\n", SDL_GetError());
         SDL_DestroyWindow(window);
         SDL_Quit();
         return 1;
@@ -148,7 +147,7 @@ int main(int argc, char* argv[]) {
     std::string last_input = "Aguardando primeiro comando do controle...";
     uint32_t frame_count = 0;
 
-    std::cout << "[RetroPlayer] Loop principal iniciado com sucesso!" << std::endl;
+    printf("[RetroPlayer] Loop principal iniciado com sucesso!\n");
 
     while (running) {
         SDL_Event event;
@@ -251,7 +250,7 @@ int main(int argc, char* argv[]) {
         frame_count++;
     }
 
-    std::cout << "[RetroPlayer] Encerrando recursos..." << std::endl;
+    printf("[RetroPlayer] Encerrando recursos...\n");
 
     if (controller) {
         SDL_GameControllerClose(controller);
@@ -260,7 +259,7 @@ int main(int argc, char* argv[]) {
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    std::cout << "[RetroPlayer] Finalizado com sucesso." << std::endl;
+    printf("[RetroPlayer] Finalizado com sucesso.\n");
     return 0;
 }
 

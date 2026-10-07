@@ -43,6 +43,8 @@ jobs:
           ls -la "$TC_ROOT/bin" 2>/dev/null || true
 
           echo "OO_PS4_TOOLCHAIN=$TC_ROOT" >> $GITHUB_ENV
+          echo "$TC_ROOT/bin" >> $GITHUB_PATH
+          echo "$TC_ROOT/bin/linux" >> $GITHUB_PATH
 
       - name: Compilar Código e Montar Staging
         run: |

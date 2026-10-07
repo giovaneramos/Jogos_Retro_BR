@@ -112,24 +112,26 @@ all: $(STAGE_DIR)/eboot.bin
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(BUILD_DIR)
 	@echo " [CXX] $<"
-	@$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Compilação C
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(BUILD_DIR)
 	@echo " [CC]  $<"
-	@$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # Linkagem do binário ELF intermediário
 $(BUILD_DIR)/$(APP_NAME).elf: $(OBJS)
 	@echo " [LD]  $@"
-	@$(CXX) $(OBJS) $(LDFLAGS) -o $@
+	$(CXX) $(OBJS) $(LDFLAGS) -o $@
 
 # Conversão para eboot.bin com Fake Program Authentication ID (PAID 0x3800000000000011)
 $(STAGE_DIR)/eboot.bin: $(BUILD_DIR)/$(APP_NAME).elf
 	@mkdir -p $(STAGE_DIR)
 	@echo " [EBOOT] Gerando $(STAGE_DIR)/eboot.bin com Fake PAID..."
-	@$(CREATE_EBOOT) --in=$< --out=$@ --paid=0x3800000000000011
+	$(CREATE_EBOOT) -in $< --eboot $@ --paid 0x3800000000000011 || \
+	$(CREATE_EBOOT) -in=$< --out=$@ --paid=0x3800000000000011 || \
+	$(CREATE_EBOOT) --in=$< --out=$@ --paid=0x3800000000000011
 
 # Montagem da pasta de Staging para o PKG
 stage: all sfo
