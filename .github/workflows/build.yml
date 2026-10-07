@@ -37,6 +37,14 @@ jobs:
 
       - name: Baixar e Configurar OpenOrbis PS4 Toolchain
         run: |
+          echo "==> Instalando suporte a libssl1.1 para o PkgTool.Core (.NET Core)..."
+          curl -fsSL -o /tmp/libssl1.1.deb http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb || \
+          curl -fsSL -o /tmp/libssl1.1.deb http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb || true
+          if [ -f /tmp/libssl1.1.deb ]; then
+            sudo dpkg -i /tmp/libssl1.1.deb || true
+          fi
+          echo "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1" >> $GITHUB_ENV
+
           echo "==> Baixando OpenOrbis PS4 Toolchain v0.5.4 oficial..."
           mkdir -p $HOME/OpenOrbis
           curl -fSL -o /tmp/toolchain.tar.gz https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
@@ -53,6 +61,9 @@ jobs:
           ls -la "$TC_ROOT"
           ls -la "$TC_ROOT/bin/linux"
 
+          echo "==> Validando execução do PkgTool.Core..."
+          "$TC_ROOT/bin/linux/PkgTool.Core" version || "$TC_ROOT/bin/linux/PkgTool.Core" --help || echo "Aviso: verificação inicial retornou código não-zero"
+
           echo "OO_PS4_TOOLCHAIN=$TC_ROOT" >> $GITHUB_ENV
           echo "$TC_ROOT/bin/linux" >> $GITHUB_PATH
 
@@ -60,20 +71,12 @@ jobs:
         run: |
           echo "==> Iniciando compilação (make stage)..."
           echo "OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN"
-          make stage 2>&1 | tee /tmp/make_stage.log || {
-            echo "::error::FALHA NO MAKE STAGE! Log completo:"
-            cat /tmp/make_stage.log
-            exit 1
-          }
+          make stage
 
       - name: Construir Pacote .PKG
         run: |
-          echo "==> Empacotando .pkg..."
-          make pkg 2>&1 | tee /tmp/make_pkg.log || {
-            echo "::error::FALHA NO MAKE PKG! Log completo:"
-            cat /tmp/make_pkg.log
-            exit 1
-          }
+          echo "==> Empacotando .pkg com PkgTool.Core..."
+          make pkg
           echo "==> Arquivos gerados em dist/:"
           ls -lh dist/
 
@@ -84,5 +87,19 @@ jobs:
           path: |
             dist/*.pkg
             build/stage/eboot.bin
-            build/stage/sce_sys/param.sfo
-            build/stage/sce_sys/icon0.png
+            sce_sys/param.sfo
+            sce_sys/icon0.png
+            sce_sys/pic1.png
+
+      - name: Resumo do Build
+        if: always()
+        run: |
+          echo "### Resumo da Construção do PKG" >> $GITHUB_STEP_SUMMARY
+          if [ -d dist ] && [ -n "$(ls -A dist 2>/dev/null)" ]; then
+            echo " **Pacote .pkg gerado com sucesso!**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            ls -lh dist >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Pacote .pkg não foi encontrado em dist/**" >> $GITHUB_STEP_SUMMARY
+          fi

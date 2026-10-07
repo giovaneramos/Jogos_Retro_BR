@@ -118,7 +118,11 @@ sfo:
 # Construção do pacote .pkg
 pkg: stage
 	@mkdir -p $(DIST_DIR)
-	@echo " [PKG] Construindo pacote no diretório $(DIST_DIR)..."
+	@if [ -z "$(PKG_TOOL)" ]; then \
+		echo " [ERRO] PkgTool.Core não foi localizado em $(TOOLCHAIN)/bin/$(CDIR)/"; \
+		exit 1; \
+	fi
+	@echo " [PKG] Construindo pacote no diretório $(DIST_DIR) usando $(PKG_TOOL)..."
 	$(PKG_TOOL) pkg_build package.gp4 $(DIST_DIR)
 	@echo " [SUCESSO] Pacote .pkg gerado com sucesso!"
 
