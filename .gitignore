@@ -9,3 +9,4 @@ build/
 
 # Outputs (o PKG final será gerado no GitHub Actions)
 dist/*.pkg
+

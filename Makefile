@@ -8,6 +8,8 @@ ifndef OO_PS4_TOOLCHAIN
     $(error [ERRO] A variável de ambiente OO_PS4_TOOLCHAIN não está definida. Defina com: export OO_PS4_TOOLCHAIN=/caminho/para/OpenOrbis/PS4-Toolchain)
 endif
 
+TOOLCHAIN := $(OO_PS4_TOOLCHAIN)
+
 # 2. Configurações da Aplicação
 APP_NAME    := RetroPlayer
 TITLE_ID    := RETR00001
@@ -24,14 +26,14 @@ else
     HOST_OS := windows
 endif
 
-# Detecta se os binários estão em bin/<os> ou diretamente em bin/
-ifneq ($(wildcard $(OO_PS4_TOOLCHAIN)/bin/$(HOST_OS)/clang*),)
-    TOOL_DIR := $(OO_PS4_TOOLCHAIN)/bin/$(HOST_OS)
+# Diretório de binários da Toolchain
+ifneq ($(wildcard $(TOOLCHAIN)/bin/$(HOST_OS)),)
+    TOOL_DIR := $(TOOLCHAIN)/bin/$(HOST_OS)
 else
-    TOOL_DIR := $(OO_PS4_TOOLCHAIN)/bin
+    TOOL_DIR := $(TOOLCHAIN)/bin
 endif
 
-# Detecção de compiladores (prioriza toolchain, fallback para clang do sistema)
+# Compiladores: prioriza binários da toolchain, fallback para clang do sistema
 ifneq ($(wildcard $(TOOL_DIR)/clang++),)
     CXX := $(TOOL_DIR)/clang++
     CC  := $(TOOL_DIR)/clang
@@ -40,19 +42,20 @@ else
     CC  := clang
 endif
 
-# Detecção do conversor de eboot (create-eboot ou create-fself)
-ifneq ($(wildcard $(TOOL_DIR)/create-eboot*),)
-    CREATE_EBOOT := $(TOOL_DIR)/create-eboot
-else ifneq ($(wildcard $(TOOL_DIR)/create-fself*),)
-    CREATE_EBOOT := $(TOOL_DIR)/create-fself
-else
-    CREATE_EBOOT := create-eboot
-endif
+# Ferramentas OpenOrbis
+CREATE_EBOOT := $(firstword $(wildcard $(TOOL_DIR)/create-eboot $(TOOL_DIR)/create-fself $(TOOLCHAIN)/bin/create-eboot $(TOOLCHAIN)/bin/create-fself create-eboot create-fself))
+PKG_TOOL     := $(firstword $(wildcard $(TOOL_DIR)/PkgTool.Core $(TOOLCHAIN)/bin/PkgTool.Core PkgTool.Core))
+CREATE_PKG   := $(firstword $(wildcard $(TOOL_DIR)/create-pkg $(TOOLCHAIN)/bin/create-pkg create-pkg))
+ORBIS_PUB    := $(firstword $(wildcard $(TOOL_DIR)/orbis-pub-cmd $(TOOLCHAIN)/bin/orbis-pub-cmd orbis-pub-cmd))
 
-PKG_TOOL     := $(TOOL_DIR)/PkgTool.Core
-CREATE_PKG   := $(TOOL_DIR)/create-pkg
-ORBIS_PUB    := $(TOOL_DIR)/orbis-pub-cmd
-SYSROOT      := $(OO_PS4_TOOLCHAIN)/target
+# Diretórios de Headers e Bibliotecas
+ifneq ($(wildcard $(TOOLCHAIN)/target/include),)
+    INC_SYS := $(TOOLCHAIN)/target/include
+    LIB_SYS := $(TOOLCHAIN)/target/lib
+else
+    INC_SYS := $(TOOLCHAIN)/include
+    LIB_SYS := $(TOOLCHAIN)/lib
+endif
 
 # 4. Diretórios do Projeto
 SRC_DIR     := src
@@ -70,27 +73,35 @@ OBJS     := $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS_CPP)) \
             $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS_C))
 
 # 6. Flags de Compilação e Linkagem
-# OpenOrbis utiliza arquitetura x86_64-scei-ps4-elf (FreeBSD-like)
-COMMON_FLAGS := --target=x86_64-scei-ps4-elf \
-                -isysroot $(SYSROOT) \
-                -isystem $(SYSROOT)/include \
+# Alvo FreeBSD/Orbis ELF suportado nativamente pelo Clang
+COMMON_FLAGS := --target=x86_64-pc-freebsd12-elf \
+                -fPIC -funwind-tables -O2 -Wall -Wextra \
+                -isysroot $(TOOLCHAIN) \
+                -isystem $(INC_SYS) \
                 -I$(INC_DIR) \
-                -I$(SYSROOT)/include/SDL2 \
-                -O2 -Wall -Wextra -fPIC \
-                -D__ORBIS__ -D__PS4__
+                -I$(INC_SYS)/SDL2 \
+                -D__ORBIS__ -D__PS4__ -DPS4=1
 
 CFLAGS   := $(COMMON_FLAGS)
-CXXFLAGS := $(COMMON_FLAGS) -std=c++17
+CXXFLAGS := $(COMMON_FLAGS) -std=c++17 -isystem $(INC_SYS)/c++/v1
 
-# Bibliotecas: Kernel, C/C++, Video, Controle (Pad), Módulos do Sistema e SDL2
-LDFLAGS  := --target=x86_64-scei-ps4-elf \
-            -isysroot $(SYSROOT) \
-            -L$(SYSROOT)/lib \
-            -fuse-ld=lld \
-            -pie \
-            -lkernel -lc -lc++ \
-            -lSceVideoOut -lScePad -lSceSysmodule \
-            -lSDL2 -lSDL2_ttf -lSDL2_image
+# Script do linker e startup object (se existirem na toolchain)
+ifneq ($(wildcard $(TOOLCHAIN)/link.x),)
+    LDSCRIPT_FLAG := -Wl,--script=$(TOOLCHAIN)/link.x
+endif
+CRT1_OBJ := $(wildcard $(LIB_SYS)/crt1.o)
+
+# Bibliotecas nativas essenciais + SDL2
+LIBS := -lc -lkernel -lc++ -lSceVideoOut -lScePad -lSceSysmodule -lSDL2
+
+LDFLAGS := --target=x86_64-pc-freebsd12-elf \
+           -fuse-ld=lld \
+           -pie \
+           -L$(LIB_SYS) \
+           $(LDSCRIPT_FLAG) \
+           -Wl,--eh-frame-hdr \
+           $(CRT1_OBJ) \
+           $(LIBS)
 
 # 7. Regras Principais
 .PHONY: all clean stage pkg sfo
@@ -109,12 +120,12 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@echo " [CC]  $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
-# Linkagem do ELF intermediário
+# Linkagem do binário ELF intermediário
 $(BUILD_DIR)/$(APP_NAME).elf: $(OBJS)
 	@echo " [LD]  $@"
 	@$(CXX) $(OBJS) $(LDFLAGS) -o $@
 
-# Criação do eboot.bin assinado (Fake Signed / FSELF)
+# Conversão para eboot.bin com Fake Program Authentication ID (PAID 0x3800000000000011)
 $(STAGE_DIR)/eboot.bin: $(BUILD_DIR)/$(APP_NAME).elf
 	@mkdir -p $(STAGE_DIR)
 	@echo " [EBOOT] Gerando $(STAGE_DIR)/eboot.bin com Fake PAID..."
@@ -141,21 +152,17 @@ sfo:
 pkg: stage sfo
 	@mkdir -p $(DIST_DIR)
 	@echo " [PKG] Construindo pacote no diretório $(DIST_DIR)..."
-	@if [ -x "$(PKG_TOOL)" ] && [ -f "scripts/package.gp4" ]; then \
+	@if [ -n "$(PKG_TOOL)" ] && [ -x "$(PKG_TOOL)" ] && [ -f "scripts/package.gp4" ]; then \
 		echo " [PKG] Empacotando com PkgTool.Core..."; \
 		$(PKG_TOOL) pkg_build scripts/package.gp4 $(DIST_DIR); \
+	elif [ -n "$(CREATE_PKG)" ] && [ -x "$(CREATE_PKG)" ]; then \
+		echo " [PKG] Empacotando com create-pkg..."; \
+		$(CREATE_PKG) --input=$(STAGE_DIR) --output=$(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg --content_id=$(CONTENT_ID); \
 	elif command -v $(ORBIS_PUB) >/dev/null 2>&1 && [ -f "scripts/package.gp4" ]; then \
 		echo " [PKG] Empacotando com orbis-pub-cmd..."; \
 		$(ORBIS_PUB) img_create scripts/package.gp4 $(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg; \
-	elif [ -x "$(CREATE_PKG)" ]; then \
-		echo " [PKG] Empacotando com create-pkg..."; \
-		$(CREATE_PKG) --input=$(STAGE_DIR) --output=$(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg --content_id=$(CONTENT_ID); \
-	elif command -v create-pkg >/dev/null 2>&1; then \
-		echo " [PKG] Empacotando com create-pkg (PATH)..."; \
-		create-pkg --input=$(STAGE_DIR) --output=$(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg --content_id=$(CONTENT_ID); \
 	else \
-		echo " [AVISO] Nenhum empacotador automatizado (PkgTool.Core, create-pkg, orbis-pub-cmd) encontrado."; \
-		echo "         A pasta de staging '$(STAGE_DIR)' está pronta para empacotamento manual via orbis-pub-cmd-gui ou PS4-Fake-PKG-Tools."; \
+		echo " [AVISO] Nenhum empacotador CLI automatizado encontrado. Arquivos de staging prontos em $(STAGE_DIR)."; \
 	fi
 	@echo " [SUCESSO] Processo de build concluído!"
 
@@ -163,4 +170,3 @@ clean:
 	@echo " [CLEAN] Limpando diretórios de build e distribuição..."
 	@rm -rf $(BUILD_DIR) $(DIST_DIR)
 	@echo " [CLEAN] Pronto."
-

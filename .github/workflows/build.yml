@@ -24,48 +24,41 @@ jobs:
       - name: Baixar e Configurar OpenOrbis PS4 Toolchain
         run: |
           echo "==> Baixando OpenOrbis PS4 Toolchain..."
-          mkdir -p $HOME/toolchain_dl
-          cd $HOME/toolchain_dl
+          mkdir -p $HOME/OpenOrbis_install
+          cd $HOME/OpenOrbis_install
 
-          # Tentativa de download das releases oficiais Linux
-          if curl -fSL -o tc.tar.gz https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.2/OpenOrbis-PS4-Toolchain-v0.5.2-Linux.tar.gz; then
-            echo "Download v0.5.2 concluído."
-            mkdir -p $HOME/OpenOrbis
-            tar -xzf tc.tar.gz -C $HOME/OpenOrbis
-          elif curl -fSL -o tc.zip https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.3/toolchain-llvm-18.2.zip; then
-            echo "Download v0.5.3 concluído."
-            mkdir -p $HOME/OpenOrbis
-            unzip -q tc.zip -d $HOME/OpenOrbis
-            if [ -f $HOME/OpenOrbis/toolchain-llvm-18.tar.gz ]; then
-              tar -xzf $HOME/OpenOrbis/toolchain-llvm-18.tar.gz -C $HOME/OpenOrbis
-            fi
-          else
-            echo "Erro: Falha ao baixar release da toolchain."
-            exit 1
-          fi
+          curl -fSL -o tc.tar.gz https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.2/OpenOrbis-PS4-Toolchain-v0.5.2-Linux.tar.gz
+          mkdir -p $HOME/OpenOrbis
+          tar -xzf tc.tar.gz -C $HOME/OpenOrbis
 
-          # Identifica o diretório raiz da toolchain contendo a pasta 'target'
-          TC_ROOT=$(find $HOME/OpenOrbis -type d -name "target" -exec dirname {} \; | head -n 1)
+          # Localiza o diretório raiz da toolchain procurando pelo arquivo link.x ou include
+          TC_ROOT=$(find $HOME/OpenOrbis -type f -name "link.x" -exec dirname {} \; | head -n 1)
           if [ -z "$TC_ROOT" ]; then
-            TC_ROOT=$(find $HOME/OpenOrbis -maxdepth 2 -type d \( -name "PS4Toolchain" -o -name "PS4-Toolchain" \) | head -n 1)
+            TC_ROOT=$(find $HOME/OpenOrbis -type d -name "include" -exec dirname {} \; | head -n 1)
+          fi
+          if [ -z "$TC_ROOT" ]; then
+            TC_ROOT="$HOME/OpenOrbis"
           fi
 
-          echo "Diretório da Toolchain detectado: $TC_ROOT"
+          echo "Toolchain encontrada em: $TC_ROOT"
           chmod -R +x "$TC_ROOT/bin" 2>/dev/null || true
+          ls -la "$TC_ROOT"
+
           echo "OO_PS4_TOOLCHAIN=$TC_ROOT" >> $GITHUB_ENV
 
       - name: Compilar Código e Montar Staging
         run: |
           echo "==> Compilando com a OpenOrbis Toolchain..."
+          echo "OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN"
           make stage
 
       - name: Construir Pacote .PKG
         run: |
           echo "==> Empacotando .pkg..."
           make pkg
-          ls -la dist/
+          ls -la dist/ || true
 
-      - name: Publicar Arquivo .PKG nos Artefatos
+      - name: Publicar Arquivo .PKG e Artefatos
         uses: actions/upload-artifact@v4
         with:
           name: RetroPlayer_PS4_PS5_PKG
@@ -73,3 +66,4 @@ jobs:
             dist/*.pkg
             build/stage/eboot.bin
             build/stage/sce_sys/param.sfo
+            build/stage/sce_sys/icon0.png
