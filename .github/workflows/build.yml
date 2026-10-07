@@ -20,6 +20,15 @@ jobs:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
 
+      - name: Instalar LLD Linker
+        run: |
+          if ! command -v ld.lld >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends lld
+          fi
+          echo "Linker encontrado:"
+          ld.lld --version
+
       - name: Baixar e Configurar OpenOrbis PS4 Toolchain
         run: |
           echo "==> Baixando OpenOrbis PS4 Toolchain v0.5.4 oficial..."
@@ -27,44 +36,23 @@ jobs:
           curl -fSL -o /tmp/toolchain.tar.gz https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
           tar -xzf /tmp/toolchain.tar.gz -C $HOME/OpenOrbis
 
-          # Localiza a raiz exata da toolchain procurando por link.x ou include
+          # Localiza a raiz exata da toolchain procurando por link.x
           TC_ROOT=$(find $HOME/OpenOrbis -type f -name "link.x" -exec dirname {} \; | head -n 1)
           if [ -z "$TC_ROOT" ]; then
-            TC_ROOT=$(find $HOME/OpenOrbis -type d -name "include" -exec dirname {} \; | head -n 1)
-          fi
-          if [ -z "$TC_ROOT" ]; then
-            TC_ROOT="$HOME/OpenOrbis"
+            TC_ROOT="$HOME/OpenOrbis/OpenOrbis/PS4Toolchain"
           fi
 
           echo "Diretório da Toolchain: $TC_ROOT"
           chmod -R +x "$TC_ROOT/bin" 2>/dev/null || true
           ls -la "$TC_ROOT"
-          ls -la "$TC_ROOT/bin" 2>/dev/null || true
-          if [ -d "$TC_ROOT/bin/linux" ]; then
-            chmod -R +x "$TC_ROOT/bin/linux" 2>/dev/null || true
-            ls -la "$TC_ROOT/bin/linux"
-            echo "$TC_ROOT/bin/linux" >> $GITHUB_PATH
-          fi
+          ls -la "$TC_ROOT/bin/linux"
 
           echo "OO_PS4_TOOLCHAIN=$TC_ROOT" >> $GITHUB_ENV
-          echo "$TC_ROOT/bin" >> $GITHUB_PATH
-
-      - name: Baixar PkgTool.Core (Empacotador PKG)
-        run: |
-          echo "==> Baixando PkgTool.Core oficial do LibOrbisPkg..."
-          mkdir -p /tmp/pkgtool
-          curl -fSL -o /tmp/pkgtool.zip https://github.com/maxton/LibOrbisPkg/releases/download/v0.2/PkgTool.Core-linux-x64-0.2.231.zip
-          unzip -q /tmp/pkgtool.zip -d /tmp/pkgtool
-          chmod +x /tmp/pkgtool/PkgTool.Core
-          sudo cp /tmp/pkgtool/PkgTool.Core /usr/local/bin/PkgTool.Core
-          echo "==> PkgTool.Core instalado com sucesso:"
-          which PkgTool.Core
-          PkgTool.Core --help || true
+          echo "$TC_ROOT/bin/linux" >> $GITHUB_PATH
 
       - name: Compilar Código e Montar Staging
         run: |
           echo "==> Compilando com a OpenOrbis Toolchain..."
-          echo "OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN"
           make stage
 
       - name: Construir Pacote .PKG

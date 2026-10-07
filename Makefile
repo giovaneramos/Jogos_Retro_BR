@@ -3,65 +3,41 @@
 # Title ID: RETR00001 | App: Retro Player
 # ==============================================================================
 
-# 1. Verificação da Toolchain OpenOrbis
-ifndef OO_PS4_TOOLCHAIN
-    $(error [ERRO] A variável de ambiente OO_PS4_TOOLCHAIN não está definida. Defina com: export OO_PS4_TOOLCHAIN=/caminho/para/OpenOrbis/PS4-Toolchain)
-endif
-
-TOOLCHAIN := $(OO_PS4_TOOLCHAIN)
-
-# 2. Configurações da Aplicação
+# 1. Metadados do Pacote
 APP_NAME    := RetroPlayer
+TITLE       := Retro Player
+VERSION     := 01.00
 TITLE_ID    := RETR00001
 CONTENT_ID  := IV0000-$(TITLE_ID)_00-0000000000000000
-VERSION     := 01.00
 
-# 3. Resolução de Sistema Operacional e Binários da Toolchain
+# 2. Resolução da Toolchain
+ifndef OO_PS4_TOOLCHAIN
+    $(error [ERRO] A variável OO_PS4_TOOLCHAIN não está definida.)
+endif
+TOOLCHAIN := $(OO_PS4_TOOLCHAIN)
+
+# 3. Resolução de Sistema Operacional e Ferramentas
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-    HOST_OS := macosx
+    CDIR := macos
 else ifeq ($(UNAME_S),Linux)
-    HOST_OS := linux
+    CDIR := linux
 else
-    HOST_OS := windows
+    CDIR := windows
 endif
 
-# Diretório de binários da Toolchain
-ifneq ($(wildcard $(TOOLCHAIN)/bin/$(HOST_OS)),)
-    TOOL_DIR := $(TOOLCHAIN)/bin/$(HOST_OS)
-else
-    TOOL_DIR := $(TOOLCHAIN)/bin
-endif
+CC   := clang
+CXX  := clang++
+LD   := $(shell command -v ld.lld 2>/dev/null || command -v lld 2>/dev/null || echo "ld.lld")
 
-# Compiladores: prioriza binários da toolchain, fallback para clang do sistema
-ifneq ($(wildcard $(TOOL_DIR)/clang++),)
-    CXX := $(TOOL_DIR)/clang++
-    CC  := $(TOOL_DIR)/clang
-else
-    CXX := clang++
-    CC  := clang
-endif
+CREATE_FSELF := $(firstword $(wildcard $(TOOLCHAIN)/bin/$(CDIR)/create-fself $(TOOLCHAIN)/bin/create-fself create-fself))
+PKG_TOOL     := $(firstword $(wildcard $(TOOLCHAIN)/bin/$(CDIR)/PkgTool.Core $(TOOLCHAIN)/bin/PkgTool.Core PkgTool.Core))
 
-# Ferramentas OpenOrbis
-CREATE_EBOOT := $(shell command -v create-eboot 2>/dev/null || command -v create-fself 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/create-eboot $(TOOL_DIR)/create-fself $(TOOLCHAIN)/bin/create-eboot $(TOOLCHAIN)/bin/create-fself create-eboot create-fself))
-PKG_TOOL     := $(shell command -v PkgTool.Core 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/PkgTool.Core $(TOOLCHAIN)/bin/PkgTool.Core /usr/local/bin/PkgTool.Core PkgTool.Core))
-CREATE_PKG   := $(shell command -v create-pkg 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/create-pkg $(TOOLCHAIN)/bin/create-pkg create-pkg))
-ORBIS_PUB    := $(shell command -v orbis-pub-cmd 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/orbis-pub-cmd $(TOOLCHAIN)/bin/orbis-pub-cmd orbis-pub-cmd))
-
-# Diretórios de Headers e Bibliotecas
-ifneq ($(wildcard $(TOOLCHAIN)/target/include),)
-    INC_SYS := $(TOOLCHAIN)/target/include
-    LIB_SYS := $(TOOLCHAIN)/target/lib
-else
-    INC_SYS := $(TOOLCHAIN)/include
-    LIB_SYS := $(TOOLCHAIN)/lib
-endif
-
-# 4. Diretórios do Projeto
+# 4. Diretórios
 SRC_DIR     := src
 INC_DIR     := include
-ASSETS_DIR  := assets
 SCE_SYS_DIR := sce_sys
+ASSETS_DIR  := assets
 BUILD_DIR   := build
 DIST_DIR    := dist
 STAGE_DIR   := $(BUILD_DIR)/stage
@@ -72,36 +48,21 @@ SRCS_C   := $(wildcard $(SRC_DIR)/*.c)
 OBJS     := $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS_CPP)) \
             $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS_C))
 
-# 6. Flags de Compilação e Linkagem
-# Alvo FreeBSD/Orbis ELF suportado nativamente pelo Clang
+# 6. Flags do Compilador e Linker (Padrão Oficial OpenOrbis)
 COMMON_FLAGS := --target=x86_64-pc-freebsd12-elf \
-                -fPIC -funwind-tables -O2 -Wall -Wextra \
+                -fPIC -funwind-tables -O2 \
                 -isysroot $(TOOLCHAIN) \
-                -isystem $(INC_SYS) \
+                -isystem $(TOOLCHAIN)/include \
+                -isystem $(TOOLCHAIN)/include/SDL2 \
                 -I$(INC_DIR) \
-                -I$(INC_SYS)/SDL2 \
                 -D__ORBIS__ -D__PS4__ -DPS4=1
 
-CFLAGS   := $(COMMON_FLAGS)
-CXXFLAGS := $(COMMON_FLAGS) -std=c++17 -isystem $(INC_SYS)/c++/v1
+CFLAGS   := $(COMMON_FLAGS) -c
+CXXFLAGS := $(COMMON_FLAGS) -c -std=c++17 -isystem $(TOOLCHAIN)/include/c++/v1
 
-# Script do linker e startup object (se existirem na toolchain)
-ifneq ($(wildcard $(TOOLCHAIN)/link.x),)
-    LDSCRIPT_FLAG := -Wl,--script=$(TOOLCHAIN)/link.x
-endif
-CRT1_OBJ := $(wildcard $(LIB_SYS)/crt1.o)
+LIBS := -lc -lkernel -lc++ -lSceUserService -lSceVideoOut -lSceAudioOut -lScePad -lSceSysmodule -lSDL2
 
-# Bibliotecas nativas essenciais + SDL2
-LIBS := -lc -lkernel -lc++ -lSceVideoOut -lScePad -lSceSysmodule -lSDL2
-
-LDFLAGS := --target=x86_64-pc-freebsd12-elf \
-           -fuse-ld=lld \
-           -pie \
-           -L$(LIB_SYS) \
-           $(LDSCRIPT_FLAG) \
-           -Wl,--eh-frame-hdr \
-           $(CRT1_OBJ) \
-           $(LIBS)
+LDFLAGS := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib $(LIBS) $(TOOLCHAIN)/lib/crt1.o
 
 # 7. Regras Principais
 .PHONY: all clean stage pkg sfo
@@ -112,74 +73,55 @@ all: $(STAGE_DIR)/eboot.bin
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(BUILD_DIR)
 	@echo " [CXX] $<"
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
 # Compilação C
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(BUILD_DIR)
 	@echo " [CC]  $<"
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -o $@ $<
 
-# Linkagem do binário ELF intermediário
+# Linkagem direta com ld.lld usando linker script OpenOrbis
 $(BUILD_DIR)/$(APP_NAME).elf: $(OBJS)
+	@mkdir -p $(BUILD_DIR)
 	@echo " [LD]  $@"
-	$(CXX) $(OBJS) $(LDFLAGS) -o $@
+	$(LD) $(OBJS) -o $@ $(LDFLAGS)
 
-# Conversão para eboot.bin com Fake Program Authentication ID (PAID 0x3800000000000011)
+# Conversão para eboot.bin com Fake PAID
 $(STAGE_DIR)/eboot.bin: $(BUILD_DIR)/$(APP_NAME).elf
 	@mkdir -p $(STAGE_DIR)
-	@echo " [EBOOT] Gerando $(STAGE_DIR)/eboot.bin com Fake PAID..."
-	@if command -v create-fself >/dev/null 2>&1; then \
-		create-fself -in $< --eboot $@ --paid 0x3800000000000011 || \
-		create-fself -in=$< --out=$@ --paid=0x3800000000000011 || \
-		create-fself --in=$< --out=$@ --paid=0x3800000000000011; \
-	elif [ -n "$(CREATE_EBOOT)" ]; then \
-		$(CREATE_EBOOT) -in $< --eboot $@ --paid 0x3800000000000011 || \
-		$(CREATE_EBOOT) -in=$< --out=$@ --paid=0x3800000000000011 || \
-		$(CREATE_EBOOT) --in=$< --out=$@ --paid=0x3800000000000011; \
-	else \
-		echo " [ERRO] create-fself ou create-eboot não encontrado."; exit 1; \
-	fi
+	@echo " [EBOOT] Gerando $(STAGE_DIR)/eboot.bin..."
+	$(CREATE_FSELF) -in=$< -out=$(BUILD_DIR)/$(APP_NAME).oelf --eboot="$@" --paid 0x3800000000000011
 
-# Montagem da pasta de Staging para o PKG
+# Montagem de Staging
 stage: all sfo
-	@echo " [STAGE] Preparando estrutura para empacotamento..."
 	@mkdir -p $(STAGE_DIR)/sce_sys
 	@if [ -d "$(SCE_SYS_DIR)" ]; then cp -rf $(SCE_SYS_DIR)/* $(STAGE_DIR)/sce_sys/ 2>/dev/null || true; fi
 	@if [ -d "$(ASSETS_DIR)" ]; then cp -rf $(ASSETS_DIR) $(STAGE_DIR)/ 2>/dev/null || true; fi
 	@echo " [STAGE] Estrutura montada em $(STAGE_DIR)."
 
-# Geração do arquivo param.sfo via script auxiliar
+# Geração de param.sfo se necessário
 sfo:
-	@if [ -f "scripts/generate_sfo.sh" ]; then \
-		echo " [SFO] Executando scripts/generate_sfo.sh..."; \
-		bash scripts/generate_sfo.sh; \
-	else \
-		echo " [SFO] Script scripts/generate_sfo.sh ainda não criado."; \
+	@if [ ! -f "$(SCE_SYS_DIR)/param.sfo" ] && [ -n "$(PKG_TOOL)" ]; then \
+		echo " [SFO] Gerando param.sfo com PkgTool.Core..."; \
+		mkdir -p $(SCE_SYS_DIR); \
+		$(PKG_TOOL) sfo_new $(SCE_SYS_DIR)/param.sfo; \
+		$(PKG_TOOL) sfo_setentry $(SCE_SYS_DIR)/param.sfo APP_TYPE --type Integer --maxsize 4 --value 1; \
+		$(PKG_TOOL) sfo_setentry $(SCE_SYS_DIR)/param.sfo APP_VER --type Utf8 --maxsize 8 --value '$(VERSION)'; \
+		$(PKG_TOOL) sfo_setentry $(SCE_SYS_DIR)/param.sfo CATEGORY --type Utf8 --maxsize 4 --value 'gd'; \
+		$(PKG_TOOL) sfo_setentry $(SCE_SYS_DIR)/param.sfo CONTENT_ID --type Utf8 --maxsize 48 --value '$(CONTENT_ID)'; \
+		$(PKG_TOOL) sfo_setentry $(SCE_SYS_DIR)/param.sfo TITLE --type Utf8 --maxsize 128 --value '$(TITLE)'; \
+		$(PKG_TOOL) sfo_setentry $(SCE_SYS_DIR)/param.sfo TITLE_ID --type Utf8 --maxsize 12 --value '$(TITLE_ID)'; \
+		$(PKG_TOOL) sfo_setentry $(SCE_SYS_DIR)/param.sfo VERSION --type Utf8 --maxsize 8 --value '$(VERSION)'; \
 	fi
 
-# Criação do arquivo .pkg final
-pkg: stage sfo
+# Construção do pacote .pkg
+pkg: stage
 	@mkdir -p $(DIST_DIR)
 	@echo " [PKG] Construindo pacote no diretório $(DIST_DIR)..."
-	@if command -v PkgTool.Core >/dev/null 2>&1 && [ -f "scripts/package.gp4" ]; then \
-		echo " [PKG] Empacotando com PkgTool.Core..."; \
-		PkgTool.Core pkg_build scripts/package.gp4 $(DIST_DIR); \
-	elif [ -n "$(PKG_TOOL)" ] && [ -x "$(PKG_TOOL)" ] && [ -f "scripts/package.gp4" ]; then \
-		echo " [PKG] Empacotando com $(PKG_TOOL)..."; \
-		$(PKG_TOOL) pkg_build scripts/package.gp4 $(DIST_DIR); \
-	elif command -v create-pkg >/dev/null 2>&1; then \
-		echo " [PKG] Empacotando com create-pkg..."; \
-		create-pkg --input=$(STAGE_DIR) --output=$(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg --content_id=$(CONTENT_ID); \
-	elif command -v $(ORBIS_PUB) >/dev/null 2>&1 && [ -f "scripts/package.gp4" ]; then \
-		echo " [PKG] Empacotando com orbis-pub-cmd..."; \
-		$(ORBIS_PUB) img_create scripts/package.gp4 $(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg; \
-	else \
-		echo " [AVISO] Nenhum empacotador CLI automatizado encontrado. Arquivos de staging prontos em $(STAGE_DIR)."; \
-	fi
-	@echo " [SUCESSO] Processo de build concluído!"
+	$(PKG_TOOL) pkg_build scripts/package.gp4 $(DIST_DIR)
+	@echo " [SUCESSO] Pacote .pkg gerado com sucesso!"
 
 clean:
-	@echo " [CLEAN] Limpando diretórios de build e distribuição..."
+	@echo " [CLEAN] Limpando diretórios..."
 	@rm -rf $(BUILD_DIR) $(DIST_DIR)
-	@echo " [CLEAN] Pronto."
