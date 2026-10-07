@@ -43,10 +43,10 @@ else
 endif
 
 # Ferramentas OpenOrbis
-CREATE_EBOOT := $(firstword $(wildcard $(TOOL_DIR)/create-eboot $(TOOL_DIR)/create-fself $(TOOLCHAIN)/bin/create-eboot $(TOOLCHAIN)/bin/create-fself create-eboot create-fself))
-PKG_TOOL     := $(firstword $(wildcard $(TOOL_DIR)/PkgTool.Core $(TOOLCHAIN)/bin/PkgTool.Core PkgTool.Core))
-CREATE_PKG   := $(firstword $(wildcard $(TOOL_DIR)/create-pkg $(TOOLCHAIN)/bin/create-pkg create-pkg))
-ORBIS_PUB    := $(firstword $(wildcard $(TOOL_DIR)/orbis-pub-cmd $(TOOLCHAIN)/bin/orbis-pub-cmd orbis-pub-cmd))
+CREATE_EBOOT := $(shell command -v create-eboot 2>/dev/null || command -v create-fself 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/create-eboot $(TOOL_DIR)/create-fself $(TOOLCHAIN)/bin/create-eboot $(TOOLCHAIN)/bin/create-fself create-eboot create-fself))
+PKG_TOOL     := $(shell command -v PkgTool.Core 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/PkgTool.Core $(TOOLCHAIN)/bin/PkgTool.Core /usr/local/bin/PkgTool.Core PkgTool.Core))
+CREATE_PKG   := $(shell command -v create-pkg 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/create-pkg $(TOOLCHAIN)/bin/create-pkg create-pkg))
+ORBIS_PUB    := $(shell command -v orbis-pub-cmd 2>/dev/null || firstword $(wildcard $(TOOL_DIR)/orbis-pub-cmd $(TOOLCHAIN)/bin/orbis-pub-cmd orbis-pub-cmd))
 
 # Diretórios de Headers e Bibliotecas
 ifneq ($(wildcard $(TOOLCHAIN)/target/include),)
@@ -129,9 +129,17 @@ $(BUILD_DIR)/$(APP_NAME).elf: $(OBJS)
 $(STAGE_DIR)/eboot.bin: $(BUILD_DIR)/$(APP_NAME).elf
 	@mkdir -p $(STAGE_DIR)
 	@echo " [EBOOT] Gerando $(STAGE_DIR)/eboot.bin com Fake PAID..."
-	$(CREATE_EBOOT) -in $< --eboot $@ --paid 0x3800000000000011 || \
-	$(CREATE_EBOOT) -in=$< --out=$@ --paid=0x3800000000000011 || \
-	$(CREATE_EBOOT) --in=$< --out=$@ --paid=0x3800000000000011
+	@if command -v create-fself >/dev/null 2>&1; then \
+		create-fself -in $< --eboot $@ --paid 0x3800000000000011 || \
+		create-fself -in=$< --out=$@ --paid=0x3800000000000011 || \
+		create-fself --in=$< --out=$@ --paid=0x3800000000000011; \
+	elif [ -n "$(CREATE_EBOOT)" ]; then \
+		$(CREATE_EBOOT) -in $< --eboot $@ --paid 0x3800000000000011 || \
+		$(CREATE_EBOOT) -in=$< --out=$@ --paid=0x3800000000000011 || \
+		$(CREATE_EBOOT) --in=$< --out=$@ --paid=0x3800000000000011; \
+	else \
+		echo " [ERRO] create-fself ou create-eboot não encontrado."; exit 1; \
+	fi
 
 # Montagem da pasta de Staging para o PKG
 stage: all sfo
@@ -154,12 +162,15 @@ sfo:
 pkg: stage sfo
 	@mkdir -p $(DIST_DIR)
 	@echo " [PKG] Construindo pacote no diretório $(DIST_DIR)..."
-	@if [ -n "$(PKG_TOOL)" ] && [ -x "$(PKG_TOOL)" ] && [ -f "scripts/package.gp4" ]; then \
+	@if command -v PkgTool.Core >/dev/null 2>&1 && [ -f "scripts/package.gp4" ]; then \
 		echo " [PKG] Empacotando com PkgTool.Core..."; \
+		PkgTool.Core pkg_build scripts/package.gp4 $(DIST_DIR); \
+	elif [ -n "$(PKG_TOOL)" ] && [ -x "$(PKG_TOOL)" ] && [ -f "scripts/package.gp4" ]; then \
+		echo " [PKG] Empacotando com $(PKG_TOOL)..."; \
 		$(PKG_TOOL) pkg_build scripts/package.gp4 $(DIST_DIR); \
-	elif [ -n "$(CREATE_PKG)" ] && [ -x "$(CREATE_PKG)" ]; then \
+	elif command -v create-pkg >/dev/null 2>&1; then \
 		echo " [PKG] Empacotando com create-pkg..."; \
-		$(CREATE_PKG) --input=$(STAGE_DIR) --output=$(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg --content_id=$(CONTENT_ID); \
+		create-pkg --input=$(STAGE_DIR) --output=$(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg --content_id=$(CONTENT_ID); \
 	elif command -v $(ORBIS_PUB) >/dev/null 2>&1 && [ -f "scripts/package.gp4" ]; then \
 		echo " [PKG] Empacotando com orbis-pub-cmd..."; \
 		$(ORBIS_PUB) img_create scripts/package.gp4 $(DIST_DIR)/$(APP_NAME)_$(TITLE_ID).pkg; \
