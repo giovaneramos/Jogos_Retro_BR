@@ -20,13 +20,19 @@ jobs:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
 
-      - name: Instalar LLD Linker
+      - name: Configurar Compilador LLVM 18 e LLD
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
+          echo "==> Configurando Clang 18 e LLD 18..."
+          if ! command -v clang++-18 >/dev/null 2>&1 || ! command -v ld.lld-18 >/dev/null 2>&1; then
             sudo apt-get update -qq
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends lld
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends clang-18 lld-18
           fi
-          echo "Linker encontrado:"
+          sudo ln -sf $(which clang-18) /usr/local/bin/clang
+          sudo ln -sf $(which clang++-18) /usr/local/bin/clang++
+          sudo ln -sf $(which ld.lld-18 2>/dev/null || which ld.lld) /usr/local/bin/ld.lld
+          echo "Compilador:"
+          clang++ --version
+          echo "Linker:"
           ld.lld --version
 
       - name: Baixar e Configurar OpenOrbis PS4 Toolchain
@@ -52,13 +58,22 @@ jobs:
 
       - name: Compilar Código e Montar Staging
         run: |
-          echo "==> Compilando com a OpenOrbis Toolchain..."
-          make stage
+          echo "==> Iniciando compilação (make stage)..."
+          echo "OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN"
+          make stage 2>&1 | tee /tmp/make_stage.log || {
+            echo "::error::FALHA NO MAKE STAGE! Log completo:"
+            cat /tmp/make_stage.log
+            exit 1
+          }
 
       - name: Construir Pacote .PKG
         run: |
           echo "==> Empacotando .pkg..."
-          make pkg
+          make pkg 2>&1 | tee /tmp/make_pkg.log || {
+            echo "::error::FALHA NO MAKE PKG! Log completo:"
+            cat /tmp/make_pkg.log
+            exit 1
+          }
           echo "==> Arquivos gerados em dist/:"
           ls -lh dist/
 
