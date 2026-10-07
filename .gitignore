@@ -1,0 +1,11 @@
+# Build artifacts
+build/
+*.o
+*.elf
+*.oelf
+
+# macOS
+.DS_Store
+
+# Outputs (o PKG final será gerado no GitHub Actions)
+dist/*.pkg
