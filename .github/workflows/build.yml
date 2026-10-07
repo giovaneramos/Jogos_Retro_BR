@@ -23,15 +23,12 @@ jobs:
 
       - name: Baixar e Configurar OpenOrbis PS4 Toolchain
         run: |
-          echo "==> Baixando OpenOrbis PS4 Toolchain..."
-          mkdir -p $HOME/OpenOrbis_install
-          cd $HOME/OpenOrbis_install
-
-          curl -fSL -o tc.tar.gz https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.2/OpenOrbis-PS4-Toolchain-v0.5.2-Linux.tar.gz
+          echo "==> Baixando OpenOrbis PS4 Toolchain v0.5.4 oficial..."
           mkdir -p $HOME/OpenOrbis
-          tar -xzf tc.tar.gz -C $HOME/OpenOrbis
+          curl -fSL -o /tmp/toolchain.tar.gz https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
+          tar -xzf /tmp/toolchain.tar.gz -C $HOME/OpenOrbis
 
-          # Localiza o diretório raiz da toolchain procurando pelo arquivo link.x ou include
+          # Localiza a raiz exata da toolchain procurando por link.x ou include
           TC_ROOT=$(find $HOME/OpenOrbis -type f -name "link.x" -exec dirname {} \; | head -n 1)
           if [ -z "$TC_ROOT" ]; then
             TC_ROOT=$(find $HOME/OpenOrbis -type d -name "include" -exec dirname {} \; | head -n 1)
@@ -40,9 +37,10 @@ jobs:
             TC_ROOT="$HOME/OpenOrbis"
           fi
 
-          echo "Toolchain encontrada em: $TC_ROOT"
+          echo "Diretório da Toolchain: $TC_ROOT"
           chmod -R +x "$TC_ROOT/bin" 2>/dev/null || true
           ls -la "$TC_ROOT"
+          ls -la "$TC_ROOT/bin" 2>/dev/null || true
 
           echo "OO_PS4_TOOLCHAIN=$TC_ROOT" >> $GITHUB_ENV
 
