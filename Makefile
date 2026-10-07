@@ -119,7 +119,7 @@ sfo:
 pkg: stage
 	@mkdir -p $(DIST_DIR)
 	@echo " [PKG] Construindo pacote no diretório $(DIST_DIR)..."
-	$(PKG_TOOL) pkg_build scripts/package.gp4 $(DIST_DIR)
+	$(PKG_TOOL) pkg_build package.gp4 $(DIST_DIR)
 	@echo " [SUCESSO] Pacote .pkg gerado com sucesso!"
 
 clean:
